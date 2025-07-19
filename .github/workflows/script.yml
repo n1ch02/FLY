@@ -1,0 +1,92 @@
+local player = game:GetService("Players").LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+
+-- Настройки
+local FLY_KEY = Enum.KeyCode.F
+local FLY_SPEED = 50
+local isFlying = false
+local bodyVelocity = nil
+
+-- Сервисы
+local UIS = game:GetService("UserInputService")
+local RS = game:GetService("RunService")
+local CAS = game:GetService("ContextActionService")
+
+-- Функция для получения вектора движения относительно камеры
+local function getCameraRelativeVector(cameraCF, vec)
+    local right = cameraCF.RightVector
+    local forward = cameraCF.LookVector
+    forward = Vector3.new(forward.X, 0, forward.Z).Unit
+    
+    return (right * vec.X) + (forward * -vec.Z)
+end
+
+-- Полная остановка
+local function stopFlying()
+    if bodyVelocity then
+        bodyVelocity:Destroy()
+        bodyVelocity = nil
+    end
+    humanoid.PlatformStand = false
+end
+
+-- Основной цикл полёта
+local function fly()
+    stopFlying() -- Очищаем предыдущие физические объекты
+    
+    bodyVelocity = Instance.new("BodyVelocity")
+    bodyVelocity.MaxForce = Vector3.new(10000, 10000, 10000)
+    bodyVelocity.P = 1000
+    bodyVelocity.Parent = character.HumanoidRootPart
+    
+    humanoid.PlatformStand = true
+    
+    while isFlying and humanoid and humanoid.Parent do
+        local camera = workspace.CurrentCamera
+        if not camera then break end
+        
+        -- Вектор ввода (X = A/D, Z = W/S)
+        local inputVec = Vector3.new(
+            (UIS:IsKeyDown(Enum.KeyCode.D) and 1 or 0) - (UIS:IsKeyDown(Enum.KeyCode.A) and 1 or 0),
+            0,
+            (UIS:IsKeyDown(Enum.KeyCode.W) and 1 or 0) - (UIS:IsKeyDown(Enum.KeyCode.S) and 1 or 0)
+        )
+        
+        -- Вектор вертикального движения (Space/Shift)
+        local vertical = (UIS:IsKeyDown(Enum.KeyCode.Space) and 1 or 0) - 
+                        (UIS:IsKeyDown(Enum.KeyCode.LeftShift) and 1 or 0)
+        
+        if inputVec.Magnitude > 0 then
+            -- Преобразуем ввод относительно камеры
+            local cameraRelative = getCameraRelativeVector(camera.CFrame, inputVec)
+            bodyVelocity.Velocity = cameraRelative * FLY_SPEED + Vector3.new(0, vertical * FLY_SPEED, 0)
+        else
+            bodyVelocity.Velocity = Vector3.new(0, vertical * FLY_SPEED, 0)
+        end
+        
+        RS.Heartbeat:Wait()
+    end
+    
+    stopFlying()
+end
+
+-- Обработчик клавиш
+UIS.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == FLY_KEY then
+        isFlying = not isFlying
+        if isFlying then
+            fly()
+        else
+            stopFlying()
+        end
+    end
+end)
+
+-- Автоматическое отключение при смерти
+humanoid.Died:Connect(function()
+    isFlying = false
+    stopFlying()
+end)
+
+print("Улучшенный полёт активирован! Нажми "..tostring(FLY_KEY).." для управления.")
